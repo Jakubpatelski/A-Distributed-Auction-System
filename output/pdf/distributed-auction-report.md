@@ -1,0 +1,38 @@
+# A Distributed Auction System
+
+## Introduction
+
+The implementation provides one auction through three independent Go server processes and a command-line client. Clients use gRPC to submit bids or request the current result through any reachable node. Replication is designed to preserve confirmed bids and continue serving requests after one failure-stop crash. The implementation includes bidder registration, increasing bids, a fixed deadline, majority coordination and recovery of replicated state.
+
+The first request with a nonempty bidder ID registers that bidder, even if the amount is rejected. An accepted amount must be positive and strictly exceed the global highest bid. Repeated bids use the same ID. Before the deadline, Result returns the highest amount and bidder; afterward it reports the final winner, or no winner if no bid was accepted. Bid returns success, fail for a normal rejection, or exception when the outcome cannot be confirmed.
+
+## Architecture
+
+The three nodes have fixed IDs 0, 1 and 2 and identical ordered membership. Each is both a potential coordinator and a replica. On an external request, the receiving node uses the internal Ping RPC to choose the lowest reachable ID, then forwards the request at most once. Node 0 is therefore normally preferred, with node 1 taking over after node 0 stops. This preference is not a permanent elected leader: safety is enforced by the replication protocol even if coordinators temporarily compete.
+
+The replicated snapshot contains registered bidder IDs, the highest bid and bidder, the deadline, and a closed flag. All processes receive the same absolute deadline at startup. Each replica also stores its largest promised ballot and its last accepted ballot and snapshot. A ballot is a pair (counter, node ID), ordered first by counter and then by ID. Counters increase, and a local gate serializes proposals. A separate mutex protects replica state without being held across network calls.
+
+For each operation, Prepare requests promises from the replicas. A replica rejects older ballots; otherwise it returns its latest accepted state. After at least two promises, the coordinator recovers the snapshot with the greatest accepted ballot, or initializes an empty auction with the configured deadline. It applies the operation and sends the resulting snapshot through Accept. Replicas reject ballots below their promises. Two acceptances are required before returning a normal response. The code contacts all nodes sequentially, but one unavailable node cannot by itself prevent a majority.
+
+Result uses the same two phases, so a query cannot simply expose a stale local copy. It also replicates closure once the deadline is observed. A superseded Prepare can retry with a higher ballot; uncertain bids are not retried automatically. Result forwarding is limited to one second. On a transient forwarding error, the receiving node can safely repeat the query through both majority phases, within the original request deadline. This state-based protocol follows CASPaxos (Denis Rystsov, 2018, section 2.2: arxiv.org/abs/1802.07000). Communication uses gRPC over TCP. The replicas are separate processes; gRPC goroutines only handle requests within a process.
+
+## Correctness 1
+
+Definition. A history is linearizable if its completed operations, together with an appropriate completion of some pending operations, can be arranged in a legal sequential history that preserves real-time precedence: if operation A returns before B is invoked, A precedes B. Equivalently, each operation appears atomic at some instant between invocation and response. Sequential consistency only requires a legal sequential history preserving each client's program order, not real-time order between clients.
+
+Argument. Under the assumptions below, the protocol supports linearizability, and therefore sequential consistency. Consider an operation A whose snapshot was accepted by two replicas. Every later two-replica Prepare quorum intersects that acceptance quorum. At the intersection, the accepted state is A's state or a later state; choosing the greatest accepted ballot preserves the chain of confirmed changes. Promises prevent an older competing proposal from subsequently obtaining a conflicting majority. Applying each operation to the recovered predecessor state gives a legal serial order. If A finishes before B starts, B must recover A or a descendant, preserving real-time precedence. Overlapping operations can be ordered according to this state ancestry.
+
+The same argument covers queries because they confirm their recovered state on a majority before replying. Successful bids strictly increase the highest amount; normal rejected bids leave that amount unchanged. Deadline checks occur while applying an operation, and closure never reopens. The timed auction interpretation assumes a common clock, as in the single-host deployment, and an identical deadline on every node. A request overlapping the deadline may be ordered before it.
+
+An exception is an unknown outcome, not evidence that the bid had no effect. The underlying operation is treated as unresolved in the abstract history: it may be included if its state is adopted later. Thus the linearizability claim does not treat a transport timeout as a completed no-op. Retrying is a new operation; exactly-once request deduplication is not implemented.
+
+## Correctness 2
+
+Without failures. With matching configuration and timely communication, the preferred coordinator serializes requests, recovers the current snapshot, applies the auction rules and obtains a majority. The initial highest bid is zero; only a greater positive amount replaces it. The maximum therefore never decreases, and the associated bidder is the winner when closure is observed. The shared deadline and replicated closed flag prevent failover from extending or reopening the auction.
+
+With one failure. If a follower stops, the coordinator and the other follower still form a majority. If the coordinator stops after returning success, at least one surviving replica holds that accepted snapshot or a descendant; the two survivors recover it before processing further requests. If it stops mid-operation, the client may receive an exception. A partially accepted snapshot may be retained through recovery or superseded if it was never confirmed. Previously confirmed changes remain preserved by quorum intersection and ballot promises.
+
+Progress and limits. Requests to a live node can select the next reachable coordinator; a client contacting the stopped process must use another address. A crash after Ping may interrupt a bid; Result can instead fall back to local majority coordination. Availability assumes nonfailed RPCs fit the 400 ms peer timeout and processing fits the request budget; contention or overload may produce exceptions. With fewer than two live replicas, no normal result is confirmed. Memory-only promises and snapshots support failure-stop, not restarting a crashed node into the same auction. Nodes are trusted, membership and IDs are fixed, and separate hosts require synchronized clocks.
+
+Build and go vet checks passed. After the Result forwarding fix, the user confirmed the documented go run sequence works with separate server processes: normal bidding, leader and follower failure, deadline enforcement, and refusal without a majority. Thirteen in-memory gRPC scenarios also passed with the race detector, including a reproduced forwarding timeout that the query fallback fixes. The original one-off timeout could not be conclusively attributed to that failure path. These checks support, but do not prove, the correctness argument.
+

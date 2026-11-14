@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package auction.v1;
+
+option go_package = "mandatory5/proto;auctionpb";
+
+service AuctionService {
+  rpc Bid(BidRequest) returns (BidResponse);
+  rpc Result(ResultRequest) returns (ResultResponse);
+}
+
+// Internal communication between servers.
+service ReplicationService {
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc Prepare(PrepareRequest) returns (PrepareResponse);
+  rpc Accept(AcceptRequest) returns (AcceptResponse);
+}
+
+// Compare round first, then node_id to break ties.
+message Ballot {
+  uint64 round = 1;
+  uint32 node_id = 2;
+}
+
+message AuctionSnapshot {
+  reserved 1;
+  repeated string bidders = 2;
+  int64 highest_bid = 3;
+  string highest_bidder = 4;
+  int64 deadline_unix_nano = 5;
+  bool closed = 6;
+}
+
+message PingRequest {}
+message PingResponse {}
+
+message PrepareRequest {
+  Ballot ballot = 1;
+}
+
+message PrepareResponse {
+  bool granted = 1;
+  Ballot promised = 2;
+  Ballot accepted = 3;
+  AuctionSnapshot state = 4;
+}
+
+message AcceptRequest {
+  Ballot ballot = 1;
+  AuctionSnapshot state = 2;
+}
+
+message AcceptResponse {
+  bool granted = 1;
+  Ballot promised = 2;
+}
+
+message BidRequest {
+  // Clients reuse the same ID across bids.
+  string bidder_id = 1;
+  int64 amount = 2;
+}
+
+enum Ack {
+  // Keep the default value separate from actual outcomes.
+  ACK_UNSPECIFIED = 0;
+  ACK_SUCCESS = 1;
+  ACK_FAIL = 2;
+  ACK_EXCEPTION = 3;
+}
+
+message BidResponse {
+  Ack ack = 1;
+}
+
+message ResultRequest {}
+
+message ResultResponse {
+  bool over = 1;
+  int64 highest_bid = 2;
+  // The winner when over is true; empty if no bid has been accepted.
+  string highest_bidder = 3;
+}

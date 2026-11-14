@@ -1,0 +1,10 @@
+=== RUN   TestQueryFallbackStillNeedsMajority
+    verification_test.go:79: bid node=2 alice 30 -> ACK_SUCCESS
+    verification_test.go:85: Fallback without majority correctly failed: rpc error: code = Unavailable desc = cannot confirm result: prepare received 1/2 required promises
+--- PASS: TestQueryFallbackStillNeedsMajority (1.42s)
+=== RUN   TestUncertainBidNotRetried
+    verification_test.go:89: bid node=2 alice 30 -> ACK_SUCCESS
+    verification_test.go:95: Uncertain bid returned an error without retrying: rpc error: code = DeadlineExceeded desc = context deadline exceeded
+--- PASS: TestUncertainBidNotRetried (2.53s)
+PASS
+ok  	mandatory5/cmd/server	5.400s

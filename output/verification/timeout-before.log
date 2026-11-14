@@ -1,0 +1,7 @@
+=== RUN   TestResultCoordinatorLostAfterPing
+    verification_test.go:70: bid node=2 alice 30 -> ACK_SUCCESS
+    verification_test.go:74: result node=2 -> <nil> err=rpc error: code = DeadlineExceeded desc = context deadline exceeded want=alice/30/over=true
+--- FAIL: TestResultCoordinatorLostAfterPing (2.83s)
+FAIL
+FAIL	mandatory5/cmd/server	3.305s
+FAIL
