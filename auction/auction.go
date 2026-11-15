@@ -1,5 +1,5 @@
 // Package auction implements the rules for one auction.
-// Calls must be sequential; the networking layer will serialize requests later.
+// The leader serializes calls; backups only store snapshots.
 package auction
 
 import "time"

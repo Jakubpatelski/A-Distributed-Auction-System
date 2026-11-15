@@ -34,10 +34,8 @@ func main() {
 	if err != nil {
 		log.Fatal("provide the same -deadline on every node, e.g. 2026-11-14T16:00:00Z")
 	}
-	s := &server{
-		id: uint32(*id), deadline: deadline, gate: make(chan struct{}, 1),
-		peers: make([]peer, len(members)),
-	}
+	s := newServer(uint32(*id), deadline)
+	defer s.stop()
 	for i, addr := range members {
 		if i == *id {
 			continue
@@ -60,6 +58,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 	auctionpb.RegisterAuctionServiceServer(grpcServer, s)
 	auctionpb.RegisterReplicationServiceServer(grpcServer, s)
+	go s.run()
 	log.Printf("Node %d listening on %s; shared deadline %s", *id, members[*id], deadline.Format(time.RFC3339))
 	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatal(err)

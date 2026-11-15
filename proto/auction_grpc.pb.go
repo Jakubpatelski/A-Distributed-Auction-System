@@ -159,20 +159,24 @@ var AuctionService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	ReplicationService_Ping_FullMethodName    = "/auction.v1.ReplicationService/Ping"
-	ReplicationService_Prepare_FullMethodName = "/auction.v1.ReplicationService/Prepare"
-	ReplicationService_Accept_FullMethodName  = "/auction.v1.ReplicationService/Accept"
+	ReplicationService_Ping_FullMethodName            = "/auction.v1.ReplicationService/Ping"
+	ReplicationService_Election_FullMethodName        = "/auction.v1.ReplicationService/Election"
+	ReplicationService_Coordinator_FullMethodName     = "/auction.v1.ReplicationService/Coordinator"
+	ReplicationService_Freeze_FullMethodName          = "/auction.v1.ReplicationService/Freeze"
+	ReplicationService_InstallSnapshot_FullMethodName = "/auction.v1.ReplicationService/InstallSnapshot"
 )
 
 // ReplicationServiceClient is the client API for ReplicationService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Internal communication between servers.
+// Bully chooses a leader. The remaining RPCs safely transfer and copy its state.
 type ReplicationServiceClient interface {
-	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
-	Prepare(ctx context.Context, in *PrepareRequest, opts ...grpc.CallOption) (*PrepareResponse, error)
-	Accept(ctx context.Context, in *AcceptRequest, opts ...grpc.CallOption) (*AcceptResponse, error)
+	Ping(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*LeaderInfo, error)
+	Election(ctx context.Context, in *ElectionRequest, opts ...grpc.CallOption) (*ElectionReply, error)
+	Coordinator(ctx context.Context, in *CoordinatorRequest, opts ...grpc.CallOption) (*ReplicaReply, error)
+	Freeze(ctx context.Context, in *FreezeRequest, opts ...grpc.CallOption) (*FreezeReply, error)
+	InstallSnapshot(ctx context.Context, in *InstallRequest, opts ...grpc.CallOption) (*ReplicaReply, error)
 }
 
 type replicationServiceClient struct {
@@ -183,9 +187,9 @@ func NewReplicationServiceClient(cc grpc.ClientConnInterface) ReplicationService
 	return &replicationServiceClient{cc}
 }
 
-func (c *replicationServiceClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+func (c *replicationServiceClient) Ping(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*LeaderInfo, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(PingResponse)
+	out := new(LeaderInfo)
 	err := c.cc.Invoke(ctx, ReplicationService_Ping_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -193,20 +197,40 @@ func (c *replicationServiceClient) Ping(ctx context.Context, in *PingRequest, op
 	return out, nil
 }
 
-func (c *replicationServiceClient) Prepare(ctx context.Context, in *PrepareRequest, opts ...grpc.CallOption) (*PrepareResponse, error) {
+func (c *replicationServiceClient) Election(ctx context.Context, in *ElectionRequest, opts ...grpc.CallOption) (*ElectionReply, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(PrepareResponse)
-	err := c.cc.Invoke(ctx, ReplicationService_Prepare_FullMethodName, in, out, cOpts...)
+	out := new(ElectionReply)
+	err := c.cc.Invoke(ctx, ReplicationService_Election_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *replicationServiceClient) Accept(ctx context.Context, in *AcceptRequest, opts ...grpc.CallOption) (*AcceptResponse, error) {
+func (c *replicationServiceClient) Coordinator(ctx context.Context, in *CoordinatorRequest, opts ...grpc.CallOption) (*ReplicaReply, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AcceptResponse)
-	err := c.cc.Invoke(ctx, ReplicationService_Accept_FullMethodName, in, out, cOpts...)
+	out := new(ReplicaReply)
+	err := c.cc.Invoke(ctx, ReplicationService_Coordinator_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *replicationServiceClient) Freeze(ctx context.Context, in *FreezeRequest, opts ...grpc.CallOption) (*FreezeReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FreezeReply)
+	err := c.cc.Invoke(ctx, ReplicationService_Freeze_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *replicationServiceClient) InstallSnapshot(ctx context.Context, in *InstallRequest, opts ...grpc.CallOption) (*ReplicaReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReplicaReply)
+	err := c.cc.Invoke(ctx, ReplicationService_InstallSnapshot_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -217,11 +241,13 @@ func (c *replicationServiceClient) Accept(ctx context.Context, in *AcceptRequest
 // All implementations must embed UnimplementedReplicationServiceServer
 // for forward compatibility.
 //
-// Internal communication between servers.
+// Bully chooses a leader. The remaining RPCs safely transfer and copy its state.
 type ReplicationServiceServer interface {
-	Ping(context.Context, *PingRequest) (*PingResponse, error)
-	Prepare(context.Context, *PrepareRequest) (*PrepareResponse, error)
-	Accept(context.Context, *AcceptRequest) (*AcceptResponse, error)
+	Ping(context.Context, *Empty) (*LeaderInfo, error)
+	Election(context.Context, *ElectionRequest) (*ElectionReply, error)
+	Coordinator(context.Context, *CoordinatorRequest) (*ReplicaReply, error)
+	Freeze(context.Context, *FreezeRequest) (*FreezeReply, error)
+	InstallSnapshot(context.Context, *InstallRequest) (*ReplicaReply, error)
 	mustEmbedUnimplementedReplicationServiceServer()
 }
 
@@ -232,14 +258,20 @@ type ReplicationServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedReplicationServiceServer struct{}
 
-func (UnimplementedReplicationServiceServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+func (UnimplementedReplicationServiceServer) Ping(context.Context, *Empty) (*LeaderInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method Ping not implemented")
 }
-func (UnimplementedReplicationServiceServer) Prepare(context.Context, *PrepareRequest) (*PrepareResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Prepare not implemented")
+func (UnimplementedReplicationServiceServer) Election(context.Context, *ElectionRequest) (*ElectionReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Election not implemented")
 }
-func (UnimplementedReplicationServiceServer) Accept(context.Context, *AcceptRequest) (*AcceptResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Accept not implemented")
+func (UnimplementedReplicationServiceServer) Coordinator(context.Context, *CoordinatorRequest) (*ReplicaReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Coordinator not implemented")
+}
+func (UnimplementedReplicationServiceServer) Freeze(context.Context, *FreezeRequest) (*FreezeReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Freeze not implemented")
+}
+func (UnimplementedReplicationServiceServer) InstallSnapshot(context.Context, *InstallRequest) (*ReplicaReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method InstallSnapshot not implemented")
 }
 func (UnimplementedReplicationServiceServer) mustEmbedUnimplementedReplicationServiceServer() {}
 func (UnimplementedReplicationServiceServer) testEmbeddedByValue()                            {}
@@ -263,7 +295,7 @@ func RegisterReplicationServiceServer(s grpc.ServiceRegistrar, srv ReplicationSe
 }
 
 func _ReplicationService_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PingRequest)
+	in := new(Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -275,43 +307,79 @@ func _ReplicationService_Ping_Handler(srv interface{}, ctx context.Context, dec 
 		FullMethod: ReplicationService_Ping_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServiceServer).Ping(ctx, req.(*PingRequest))
+		return srv.(ReplicationServiceServer).Ping(ctx, req.(*Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ReplicationService_Prepare_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PrepareRequest)
+func _ReplicationService_Election_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ElectionRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServiceServer).Prepare(ctx, in)
+		return srv.(ReplicationServiceServer).Election(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ReplicationService_Prepare_FullMethodName,
+		FullMethod: ReplicationService_Election_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServiceServer).Prepare(ctx, req.(*PrepareRequest))
+		return srv.(ReplicationServiceServer).Election(ctx, req.(*ElectionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ReplicationService_Accept_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AcceptRequest)
+func _ReplicationService_Coordinator_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CoordinatorRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServiceServer).Accept(ctx, in)
+		return srv.(ReplicationServiceServer).Coordinator(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ReplicationService_Accept_FullMethodName,
+		FullMethod: ReplicationService_Coordinator_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServiceServer).Accept(ctx, req.(*AcceptRequest))
+		return srv.(ReplicationServiceServer).Coordinator(ctx, req.(*CoordinatorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ReplicationService_Freeze_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FreezeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReplicationServiceServer).Freeze(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ReplicationService_Freeze_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReplicationServiceServer).Freeze(ctx, req.(*FreezeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ReplicationService_InstallSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstallRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReplicationServiceServer).InstallSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ReplicationService_InstallSnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReplicationServiceServer).InstallSnapshot(ctx, req.(*InstallRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -328,12 +396,20 @@ var ReplicationService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ReplicationService_Ping_Handler,
 		},
 		{
-			MethodName: "Prepare",
-			Handler:    _ReplicationService_Prepare_Handler,
+			MethodName: "Election",
+			Handler:    _ReplicationService_Election_Handler,
 		},
 		{
-			MethodName: "Accept",
-			Handler:    _ReplicationService_Accept_Handler,
+			MethodName: "Coordinator",
+			Handler:    _ReplicationService_Coordinator_Handler,
+		},
+		{
+			MethodName: "Freeze",
+			Handler:    _ReplicationService_Freeze_Handler,
+		},
+		{
+			MethodName: "InstallSnapshot",
+			Handler:    _ReplicationService_InstallSnapshot_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

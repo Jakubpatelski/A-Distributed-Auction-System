@@ -23,10 +23,10 @@ func main() {
 
 func run() error {
 	addr := flag.String("addr", "localhost:50051", "server address")
-	timeout := flag.Duration("timeout", 3*time.Second, "request timeout")
+	timeout := flag.Duration("timeout", 6*time.Second, "request timeout (includes leader election)")
 	flag.Parse()
 	args := flag.Args()
-	usage := "usage: client [-addr localhost:50051] [-timeout 3s] bid <bidder-id> <amount> | result"
+	usage := "usage: client [-addr localhost:50051] [-timeout 6s] bid <bidder-id> <amount> | result"
 	if len(args) == 0 {
 		return fmt.Errorf("%s", usage)
 	}
